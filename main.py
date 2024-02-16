@@ -1,25 +1,35 @@
-import boto3, requests, json
+import boto3, requests, base64, time
+from pick import pick
 from botocore.exceptions import ClientError
+from Crypto.Cipher import PKCS1_v1_5
+from Crypto.PublicKey import RSA
 
 ec2 = boto3.resource('ec2', region_name='us-west-2')
 userInstance = boto3.client('ec2')
 ssm = boto3.client('ssm')
 publicIp = requests.get('https://api.ipify.org?format=json').json()['ip']
-ami = ''
+keyPair = '/Users/jeremysalinas/Downloads/JeremyS-USWest2-KP.pem'
+
+with open(keyPair, 'r') as key_file:
+    key_text = key_file.read()
 # get user platform
 # TODO: display a list of windows/linux OS and have user select before loading ami
 def get_platform():
-    userInput = input('Windows or Linux? ').lower()
-    platform = userInput if userInput == 'windows' or userInput == 'linux' else ''
-    return platform or 'linux'
+    os = ''
+    amzn2 = '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
+    availablePlatforms = ['Windows Server 2016','Windows Server 2019','Windows Server 2022','Amazon Linux']
+    title = 'Please select ec2 platform: '
+    platform = pick(availablePlatforms,title,indicator='=>')[0].split()
+    if 'Windows' in platform:
+        os = f'{platform[0]}_{platform[1]}-{platform[2]}'
+        windows = f'/aws/service/ami-windows-latest/{os}-English-Full-Base'
+        return windows
+    return amzn2
 
 platform = get_platform()
 
 # get latest recommended ami
-if platform.lower() == 'linux':
-    ami = ssm.get_parameter(Name='/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2')['Parameter']['Value']
-else:
-    ami = ssm.get_parameter(Name='/aws/service/ami-windows-latest/Windows_Server-2016-English-Full-Base')['Parameter']['Value']
+ami = ssm.get_parameter(Name=platform)['Parameter']['Value']
 
 # check for duplicate group name
 def check_sec_group(groupName):
@@ -50,6 +60,25 @@ def delete_sec_group(secGroupId):
     )
     return f'{secGroupId} deleted'
 
+# add security group rules
+def add_sec_rules():
+    if 'Windows' in platform:
+        userInstance.authorize_security_group_ingress(
+            GroupId=instanceSecGroup,
+            CidrIp=f'{publicIp}/32',
+            FromPort=3389,
+            IpProtocol='tcp',
+            ToPort=3389
+        )
+    else: 
+        userInstance.authorize_security_group_ingress(
+        GroupId=instanceSecGroup,
+        CidrIp=f'{publicIp}/32',
+        FromPort=22,
+        IpProtocol='tcp',
+        ToPort=22
+    )
+
 # delete instance
 def delete_instance(instanceId):
     userInstance.terminate_instances(
@@ -59,7 +88,14 @@ def delete_instance(instanceId):
     )
     return f'{instanceId} deleted'
 
+# decrypt instance password
+def decrypt(key_text, password_data):
+    key = RSA.importKey(key_text)
+    cipher = PKCS1_v1_5.new(key)
+    return cipher.decrypt(base64.b64decode(password_data), None).decode('utf8')
+
 instanceSecGroup = create_sec_group()
+add_sec_rules()
 # create keypair and save
 
 #  create instance returns instance object
@@ -72,16 +108,14 @@ instance = ec2.create_instances(
     MaxCount=1,MinCount=1)[0]
 instance.wait_until_running()
 
-# enable ssh/rdp depending on platform
 instanceInfo = userInstance.describe_instances(InstanceIds=[instance.id])['Reservations'][0]['Instances'][0]
+windowsPass = ''
+if 'Windows' in platform:
+    # wait for password to be generated
+    while not windowsPass:
+        windowsPass = userInstance.get_password_data(InstanceId=instance.id)['PasswordData']
+        time.sleep(60)
+    windowsDecryptedPass = decrypt(key_text,windowsPass)
 
-userInstance.authorize_security_group_ingress(
-    GroupId=instanceSecGroup,
-    CidrIp=f'{publicIp}/32',
-    FromPort=22,
-    IpProtocol='tcp',
-    ToPort=22
-)
+print(f"ID: {instance.id}\nDNS: {instanceInfo['PublicDnsName']}\nPublic IP: {instanceInfo['PublicIpAddress']}\nKeyName: {instanceInfo['KeyName']}\nRDP Password: {windowsDecryptedPass}")
 
-# enable ssh/rdp depending on platform
-print(f"ID: {instance.id}\nDNS: {instanceInfo['PublicDnsName']}\nPublic IP: {instanceInfo['PublicIpAddress']}\nKeyName: {instanceInfo['KeyName']}")
