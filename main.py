@@ -118,4 +118,3 @@ if 'Windows' in platform:
     windowsDecryptedPass = decrypt(key_text,windowsPass)
 
 print(f"ID: {instance.id}\nDNS: {instanceInfo['PublicDnsName']}\nPublic IP: {instanceInfo['PublicIpAddress']}\nKeyName: {instanceInfo['KeyName']}\nRDP Password: {windowsDecryptedPass}")
-
