@@ -1,14 +1,17 @@
-import boto3, requests, base64, time
+import boto3, requests, base64, time, random
 from pick import pick
 from botocore.exceptions import ClientError
 from Crypto.Cipher import PKCS1_v1_5
 from Crypto.PublicKey import RSA
 
+randAdj = ['unique','glowing','beautiful','magnificient','ornery','pleasant','grouchy']
+randNoun = ['pheasant','parrot','cockatoo','curassow','chicken','penguin','pidgeon']
+name = f'{random.choice(randAdj)}-{random.choice(randNoun)}-{int(time.time())}'
 ec2 = boto3.resource('ec2', region_name='us-west-2')
 userInstance = boto3.client('ec2')
 ssm = boto3.client('ssm')
 publicIp = requests.get('https://api.ipify.org?format=json').json()['ip']
-keyPair = '/Users/jeremysalinas/Downloads/JeremyS-USWest2-KP.pem'
+keyPair = '/Users/jeremysalinas/Downloads/JeremyS-USWest2-KP.pem' # TODO: remove hard link, create keypair and store for connections
 
 with open(keyPair, 'r') as key_file:
     key_text = key_file.read()
@@ -42,7 +45,7 @@ def check_sec_group(groupName):
 
 # create security group
 def create_sec_group():
-    secGroupName = input('Enter name for new security group: ')
+    secGroupName = f'{name}-security_group'
     validName = check_sec_group(secGroupName)
     if not validName:
         instanceSecGroup = userInstance.create_security_group(
@@ -105,6 +108,17 @@ instance = ec2.create_instances(
     KeyName='JeremyS-USWest2-KP',
     SecurityGroupIds=[instanceSecGroup],
     InstanceInitiatedShutdownBehavior='terminate',
+    TagSpecifications=[
+        {
+            'ResourceType': 'instance',
+            'Tags': [
+                {
+                    'Key': 'Name',
+                    'Value': f'{name}'
+                }
+            ]
+        }
+    ],
     MaxCount=1,MinCount=1)[0]
 instance.wait_until_running()
 
@@ -114,7 +128,9 @@ if 'Windows' in platform:
     # wait for password to be generated
     while not windowsPass:
         windowsPass = userInstance.get_password_data(InstanceId=instance.id)['PasswordData']
-        time.sleep(60)
+        time.sleep(30)
     windowsDecryptedPass = decrypt(key_text,windowsPass)
+    print(f"ID: {instance.id}\nDNS: {instanceInfo['PublicDnsName']}\nPublic IP: {instanceInfo['PublicIpAddress']}\nKeyName: {instanceInfo['KeyName']}\nRDP Password: {windowsDecryptedPass}")
+else:
+    print(f"Name: {name}\nID: {instance.id}\nDNS: {instanceInfo['PublicDnsName']}\nPublic IP: {instanceInfo['PublicIpAddress']}\nKeyName: {instanceInfo['KeyName']}")
 
-print(f"ID: {instance.id}\nDNS: {instanceInfo['PublicDnsName']}\nPublic IP: {instanceInfo['PublicIpAddress']}\nKeyName: {instanceInfo['KeyName']}\nRDP Password: {windowsDecryptedPass}")
