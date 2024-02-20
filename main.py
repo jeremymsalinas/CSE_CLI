@@ -1,4 +1,4 @@
-import boto3, requests, base64, time, random
+import boto3, requests, base64, time, random, os
 from pick import pick
 from botocore.exceptions import ClientError
 from Crypto.Cipher import PKCS1_v1_5
@@ -11,10 +11,8 @@ ec2 = boto3.resource('ec2', region_name='us-west-2')
 userInstance = boto3.client('ec2')
 ssm = boto3.client('ssm')
 publicIp = requests.get('https://api.ipify.org?format=json').json()['ip']
-keyPair = '/Users/jeremysalinas/Downloads/JeremyS-USWest2-KP.pem' # TODO: remove hard link, create keypair and store for connections
+keyPairName = f'ec2cli-{name}-KP'
 
-with open(keyPair, 'r') as key_file:
-    key_text = key_file.read()
 # get user platform
 # TODO: display a list of windows/linux OS and have user select before loading ami
 def get_platform():
@@ -45,7 +43,7 @@ def check_sec_group(groupName):
 
 # create security group
 def create_sec_group():
-    secGroupName = f'{name}-security_group'
+    secGroupName = f'ec2cli-{name}-security-group'
     validName = check_sec_group(secGroupName)
     if not validName:
         instanceSecGroup = userInstance.create_security_group(
@@ -89,7 +87,11 @@ def delete_instance(instanceId):
             instanceId
         ]
     )
-    return f'{instanceId} deleted'
+    print(f'Deleting {name}')
+    userInstance.get_waiter('instance_terminated').wait(InstanceIds=[instanceId])
+    print(f'{name} deleted')
+    print(delete_sec_group(instanceSecGroup))
+    
 
 # decrypt instance password
 def decrypt(key_text, password_data):
@@ -100,12 +102,22 @@ def decrypt(key_text, password_data):
 instanceSecGroup = create_sec_group()
 add_sec_rules()
 # create keypair and save
+def create_key_pair():
+    dir = os.path.expanduser(f'~/ec2cli')
+    if not os.path.exists(dir):
+        os.mkdir(dir)
+    path = f'{dir}/ec2cli-{name}-KP.pem'
+    keyPair = userInstance.create_key_pair(KeyName=keyPairName)
+    with open(path,'w+') as f:
+        f.write(keyPair['KeyMaterial'])
+    return path
 
+keyPair = create_key_pair() # TODO: remove hard link, create keypair and store for connections
 #  create instance returns instance object
 instance = ec2.create_instances(
     ImageId=ami,
     InstanceType='t2.medium',
-    KeyName='JeremyS-USWest2-KP',
+    KeyName=keyPairName,
     SecurityGroupIds=[instanceSecGroup],
     InstanceInitiatedShutdownBehavior='terminate',
     TagSpecifications=[
@@ -115,12 +127,29 @@ instance = ec2.create_instances(
                 {
                     'Key': 'Name',
                     'Value': f'{name}'
+                },
+                {
+                    'Key': 'ec2cli',
+                    'Value': 'true'
                 }
             ]
         }
     ],
     MaxCount=1,MinCount=1)[0]
+print("Waiting for instance to become available...")
 instance.wait_until_running()
+print("Instance online!\n")
+
+def get_ec2_cli_instances():
+    ec2cliCreatedInstance = userInstance.describe_instances(Filters=[
+        {
+            'Name': 'tag:ec2cli',
+            'Values': [
+                'true'
+                ]
+        }
+    ])['Reservations'][0]['Tags']
+    print(ec2cliCreatedInstance)
 
 instanceInfo = userInstance.describe_instances(InstanceIds=[instance.id])['Reservations'][0]['Instances'][0]
 windowsPass = ''
@@ -129,8 +158,11 @@ if 'Windows' in platform:
     while not windowsPass:
         windowsPass = userInstance.get_password_data(InstanceId=instance.id)['PasswordData']
         time.sleep(30)
+    with open (keyPair,'r') as f:
+        key_text = f.readlines()
     windowsDecryptedPass = decrypt(key_text,windowsPass)
-    print(f"ID: {instance.id}\nDNS: {instanceInfo['PublicDnsName']}\nPublic IP: {instanceInfo['PublicIpAddress']}\nKeyName: {instanceInfo['KeyName']}\nRDP Password: {windowsDecryptedPass}")
+    print(f"Name: {name}\nID: {instance.id}\nDNS: {instanceInfo['PublicDnsName']}\nPublic IP: {instanceInfo['PublicIpAddress']}\nKeyName: {instanceInfo['KeyName']}\nRDP Password: {windowsDecryptedPass}")
 else:
     print(f"Name: {name}\nID: {instance.id}\nDNS: {instanceInfo['PublicDnsName']}\nPublic IP: {instanceInfo['PublicIpAddress']}\nKeyName: {instanceInfo['KeyName']}")
+    print(f"To connect run the following commands:\nchmod 400 {keyPair}\nssh -i {keyPair} ec2-user@{instanceInfo['PublicIpAddress']}")
 
