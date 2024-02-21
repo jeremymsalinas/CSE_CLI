@@ -1,2 +1,4 @@
 .venv
 .DS_Store
+ec2cli.egg-info
+__pycache__
