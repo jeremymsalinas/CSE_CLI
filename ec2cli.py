@@ -141,7 +141,8 @@ def ec2cli():
 @click.option('--name', '-n', default='', help='instance name')
 @click.option('--region', '-r', default='', help='region')
 @click.option('--userdata', default='', help='path to user data script')
-def create_instance(ami, keypairname, instancesecgroup, name, region, userdata):
+@click.option('--instancetype',default='t2.medium',help='instance type')
+def create_instance(ami, keypairname, instancesecgroup, name, region, userdata,instancetype):
     randAdj = ['unique','glowing','beautiful','magnificient','ornery','pleasant','grouchy']
     randNoun = ['pheasant','parrot','cockatoo','curassow','chicken','penguin','pidgeon']
     if not name: name = f'{random.choice(randAdj)}-{random.choice(randNoun)}-{int(time.time())}'
@@ -162,11 +163,11 @@ def create_instance(ami, keypairname, instancesecgroup, name, region, userdata):
     if userdata:
         with open(userdata, 'r') as f:
             userdata = f.read()
-    print(f'Creating {name}')
+    click.secho(f'Creating {name}',fg='cyan')
     try:
         instance = ec2.create_instances(
             ImageId=ami,
-            InstanceType='t2.medium',
+            InstanceType=instancetype,
             KeyName=keypairname,
             SecurityGroupIds=[instancesecgroup],
             InstanceInitiatedShutdownBehavior='terminate',
@@ -191,24 +192,26 @@ def create_instance(ami, keypairname, instancesecgroup, name, region, userdata):
         raise SystemExit(e.response['Error']['Message'])
     click.secho("Waiting for instance to become available...",fg='cyan',blink=True)
     instance.wait_until_running()
-    print("Instance online!\n")
+    click.secho("Instance online!",fg='cyan')
     instanceInfo = userInstance.describe_instances(InstanceIds=[instance.id])['Reservations'][0]['Instances'][0]
     windowsPass = ''
     if 'Windows' in platform:
         # wait for password to be generated
         while not windowsPass:
-            print("Waiting for password to be generated...")
+            click.secho("Waiting for password to be generated...",fg='cyan')
             windowsPass = userInstance.get_password_data(InstanceId=instance.id)['PasswordData']
             time.sleep(30)
         with open (keyPair,'r') as f:
             key_text = f.read()
         windowsDecryptedPass = decrypt(key_text,windowsPass)
-        print(f"Name: {name}\nID: {instance.id}\nDNS: {instanceInfo['PublicDnsName']}\nPublic IP: {instanceInfo['PublicIpAddress']}\nKeyName: {instanceInfo['KeyName']}\nRDP Password: {windowsDecryptedPass}")
+        print(f"Name: {name}\nID: {instance.id}\nDNS: {instanceInfo['PublicDnsName']}\nPublic IP: {instanceInfo['PublicIpAddress']}\nKeyName: {instanceInfo['KeyName']}\nRDP Password: {windowsDecryptedPass}\n")
     else:
         if 'Ubuntu' in platform: user = 'ubuntu'
         else: user = 'ec2-user'
-        print(f"Name: {name}\nID: {instance.id}\nDNS: {instanceInfo['PublicDnsName']}\nPublic IP: {instanceInfo['PublicIpAddress']}\nKeyName: {instanceInfo['KeyName']}")
-        print(f"To connect run the following commands:\nchmod 400 {keyPair}\nssh -i {keyPair} {user}@{instanceInfo['PublicIpAddress']}")
+        print(f"Name: {name}\nID: {instance.id}\nDNS: {instanceInfo['PublicDnsName']}\nPublic IP: {instanceInfo['PublicIpAddress']}\nKeyName: {instanceInfo['KeyName']}\n")
+        print(f"To connect run the following commands:\nchmod 400 {keyPair}\nssh -i {keyPair} {user}@{instanceInfo['PublicIpAddress']}\n")
+    click.secho("To delete the instance run the following command:",fg='yellow')
+    print(f"ec2cli delete_instance -id {instance.id} -r {region}\n")
     return instance
 
 @ec2cli.command('get_instances')
@@ -259,7 +262,7 @@ def delete_instance(instanceid,region):
             if value['Key'] == 'Name':
                 name = value['Value']
         instanceSecGroup = instance.security_groups[0]['GroupId']
-    click.secho(f'Deleting {name}',fg='red')
+    click.secho(f'Deleting {name}...',fg='red')
     instance.terminate()
     instance.wait_until_terminated()
     click.secho(f'{name} deleted',fg='green')
