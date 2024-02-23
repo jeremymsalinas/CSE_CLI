@@ -49,4 +49,4 @@ ec2cli create_instance
   ![Alt text](image.png)
 - All of the info needed to connect will be provided after instance creation.
 
-  ![Alt text](image-1.png)
+![Alt text](image-1.png)
