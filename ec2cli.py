@@ -48,7 +48,7 @@ def check_sec_group(groupName):
     try:
         secGroups = userInstance.describe_security_groups()['SecurityGroups']
     except ClientError as e:
-        raise SystemExit(e)
+        raise ValueError(e)
     secGroupNames = [group['GroupName'] for group in secGroups]
     secGroupExists = groupName in secGroupNames
     return secGroupExists
@@ -136,11 +136,13 @@ def ec2cli():
 #  create instance returns instance object
 @ec2cli.command('create_instance')
 @click.option('--ami', default='', help='ami id')
-@click.option('--keypairname', default='', help='key pair name')
+@click.option('--keypairname', '-kp', default='', help='key pair name')
 @click.option('--instancesecgroup', default='', help='security group id')
-@click.option('--name', default='', help='instance name')
-@click.option('--region', default='', help='region')
-def create_instance(ami, keypairname, instancesecgroup,name,region):
+@click.option('--name', '-n', default='', help='instance name')
+@click.option('--region', '-r', default='', help='region')
+@click.option('--userdata', default='', help='path to user data script')
+@click.option('--instancetype',default='t2.medium',help='instance type')
+def create_instance(ami, keypairname, instancesecgroup, name, region, userdata,instancetype):
     randAdj = ['unique','glowing','beautiful','magnificient','ornery','pleasant','grouchy']
     randNoun = ['pheasant','parrot','cockatoo','curassow','chicken','penguin','pidgeon']
     if not name: name = f'{random.choice(randAdj)}-{random.choice(randNoun)}-{int(time.time())}'
@@ -158,11 +160,14 @@ def create_instance(ami, keypairname, instancesecgroup,name,region):
     if not instancesecgroup: 
         instancesecgroup = create_sec_group(name)
         add_sec_rules(platform, instancesecgroup)
-    print(f'Creating {name}')
+    if userdata:
+        with open(userdata, 'r') as f:
+            userdata = f.read()
+    click.secho(f'Creating {name}',fg='cyan')
     try:
         instance = ec2.create_instances(
             ImageId=ami,
-            InstanceType='t2.medium',
+            InstanceType=instancetype,
             KeyName=keypairname,
             SecurityGroupIds=[instancesecgroup],
             InstanceInitiatedShutdownBehavior='terminate',
@@ -181,29 +186,32 @@ def create_instance(ami, keypairname, instancesecgroup,name,region):
                     ]
                 }
             ],
+            UserData=userdata,
             MaxCount=1,MinCount=1)[0]
     except ClientError as e:
-        raise SystemExit(e)
+        raise SystemExit(e.response['Error']['Message'])
     click.secho("Waiting for instance to become available...",fg='cyan',blink=True)
     instance.wait_until_running()
-    print("Instance online!\n")
+    click.secho("Instance online!",fg='cyan')
     instanceInfo = userInstance.describe_instances(InstanceIds=[instance.id])['Reservations'][0]['Instances'][0]
     windowsPass = ''
     if 'Windows' in platform:
         # wait for password to be generated
         while not windowsPass:
-            print("Waiting for password to be generated...")
+            click.secho("Waiting for password to be generated...",fg='cyan')
             windowsPass = userInstance.get_password_data(InstanceId=instance.id)['PasswordData']
             time.sleep(30)
         with open (keyPair,'r') as f:
             key_text = f.read()
         windowsDecryptedPass = decrypt(key_text,windowsPass)
-        print(f"Name: {name}\nID: {instance.id}\nDNS: {instanceInfo['PublicDnsName']}\nPublic IP: {instanceInfo['PublicIpAddress']}\nKeyName: {instanceInfo['KeyName']}\nRDP Password: {windowsDecryptedPass}")
+        print(f"Name: {name}\nID: {instance.id}\nDNS: {instanceInfo['PublicDnsName']}\nPublic IP: {instanceInfo['PublicIpAddress']}\nKeyName: {instanceInfo['KeyName']}\nRDP Password: {windowsDecryptedPass}\n")
     else:
         if 'Ubuntu' in platform: user = 'ubuntu'
         else: user = 'ec2-user'
-        print(f"Name: {name}\nID: {instance.id}\nDNS: {instanceInfo['PublicDnsName']}\nPublic IP: {instanceInfo['PublicIpAddress']}\nKeyName: {instanceInfo['KeyName']}")
-        print(f"To connect run the following commands:\nchmod 400 {keyPair}\nssh -i {keyPair} {user}@{instanceInfo['PublicIpAddress']}")
+        print(f"Name: {name}\nID: {instance.id}\nDNS: {instanceInfo['PublicDnsName']}\nPublic IP: {instanceInfo['PublicIpAddress']}\nKeyName: {instanceInfo['KeyName']}\n")
+        print(f"To connect run the following commands:\nchmod 400 {keyPair}\nssh -i {keyPair} {user}@{instanceInfo['PublicIpAddress']}\n")
+    click.secho("To delete the instance run the following command:",fg='yellow')
+    print(f"ec2cli delete_instance -id {instance.id} -r {region}\n")
     return instance
 
 @ec2cli.command('get_instances')
@@ -225,32 +233,37 @@ def get_instances(region):
             }
         ])['Reservations']]
     except ClientError as e:
-        raise SystemExit(e)
+        raise SystemExit(e.response['Error']['Message'])
     for instance in ec2cliCreatedInstances:
         tags += [*instance['Instances'][0]['Tags']]
     instanceNames = [[tag['Value']] for tag in tags if tag['Key'] == 'Name']
     for count,name in enumerate(instanceNames):
-        name.extend([ec2cliCreatedInstances[count]['Instances'][0]['InstanceId'],ec2cliCreatedInstances[count]['Instances'][0]['State']['Name']])
+        name.extend([ec2cliCreatedInstances[count]['Instances'][0]['InstanceId'],
+                     ec2cliCreatedInstances[count]['Instances'][0]['State']['Name']])
     print(tabulate(instanceNames, headers=['Name','ID','State']))
 
 # delete instance
 @ec2cli.command('delete_instance')
-@click.option('--instanceid', default='', help='instance id')
-@click.option('--region', default='', help='region')
+@click.option('--instanceid', '-id', default='', help='instance id')
+@click.option('--region', '-r', default='', help='region')
 def delete_instance(instanceid,region):
     if region:
         try:
             update_session(region)
-        except ClientError as e:
-            raise SystemExit(e)
+        except ClientError:
+            raise SystemExit("Invalid region id.")
     if instanceid:
         instance = ec2.Instance(instanceid)
-        for value in instance.tags:
+        try:
+            tags = instance.tags
+        except ClientError:
+            raise SystemExit(f"Instance {instanceid} not found in region {session.region_name}.")
+        for value in tags:
             if value['Key'] == 'Name':
                 name = value['Value']
         instanceSecGroup = instance.security_groups[0]['GroupId']
-    click.secho(f'Deleting {name}',fg='red')
+    click.secho(f'Deleting {name}...',fg='red')
     instance.terminate()
     instance.wait_until_terminated()
     click.secho(f'{name} deleted',fg='green')
-    print(delete_sec_group(instanceSecGroup))    
+    click.secho(delete_sec_group(instanceSecGroup),fg='green')    
