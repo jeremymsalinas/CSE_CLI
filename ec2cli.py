@@ -16,8 +16,7 @@ def update_session(region):
     ec2 = session.resource('ec2',region_name=region)
     userInstance = session.client('ec2',region_name=region)
 
-# get user platform
-# TODO: display a list of windows/linux OS and have user select before loading ami
+# user platform selection screen
 def get_platform(region):
     ssm = session.client('ssm', region_name=region)
     quickStartAmis = requests.get(f"https://prod.{region}.qs.console.ec2.aws.dev/get_quickstart_list_en.json").json()['amiList']
@@ -72,10 +71,13 @@ def create_sec_group(name):
 
 # delete security group
 def delete_sec_group(secGroupId):
-    userInstance.delete_security_group(
-        GroupId=secGroupId
-    )
-    return f'{secGroupId} deleted'
+    try:
+        userInstance.delete_security_group(
+            GroupId=secGroupId
+        )
+        return f'{secGroupId} deleted'
+    except ClientError:
+        return f'Unable to delete {secGroupId}'
 
 # add security group rules
 def add_sec_rules(platform,instanceSecGroup):
@@ -238,9 +240,10 @@ def get_instances(region):
         tags += [*instance['Instances'][0]['Tags']]
     instanceNames = [[tag['Value']] for tag in tags if tag['Key'] == 'Name']
     for count,name in enumerate(instanceNames):
-        name.extend([ec2cliCreatedInstances[count]['Instances'][0]['InstanceId'],
+        name.extend([ec2cliCreatedInstances[count]['Instances'][0]['PlatformDetails'],
+                     ec2cliCreatedInstances[count]['Instances'][0]['InstanceId'],
                      ec2cliCreatedInstances[count]['Instances'][0]['State']['Name']])
-    print(tabulate(instanceNames, headers=['Name','ID','State']))
+    print(tabulate(instanceNames, headers=['Name','Platform','ID','State']))
 
 # delete instance
 @ec2cli.command('delete_instance')
@@ -266,4 +269,4 @@ def delete_instance(instanceid,region):
     instance.terminate()
     instance.wait_until_terminated()
     click.secho(f'{name} deleted',fg='green')
-    click.secho(delete_sec_group(instanceSecGroup),fg='green')    
+    click.secho(delete_sec_group(instanceSecGroup))    

@@ -19,7 +19,7 @@ More information on boto3 credentials [here](https://boto3.amazonaws.com/v1/docu
 - Activate venv
   - Windows
   ```powershell
-     ./.venv/bin/Activate.ps1
+     .\.venv\Scripts\Activate.ps1
   ```
   - Mac/Linux
   ```zsh
