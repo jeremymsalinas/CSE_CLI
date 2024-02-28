@@ -192,7 +192,7 @@ def create_instance(ami, keypairname, instancesecgroup, name, region, userdata,i
             MaxCount=1,MinCount=1)[0]
     except ClientError as e:
         raise SystemExit(e.response['Error']['Message'])
-    click.secho("Waiting for instance to become available...",fg='cyan',blink=True)
+    click.secho("Waiting for instance to become available...",fg='cyan')
     instance.wait_until_running()
     click.secho("Instance online!",fg='cyan')
     instanceInfo = userInstance.describe_instances(InstanceIds=[instance.id])['Reservations'][0]['Instances'][0]
