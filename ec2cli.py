@@ -156,6 +156,7 @@ def create_instance(ami, keypairname, instancesecgroup, name, region, userdata,i
     else:
         region = session.region_name
     if not ami: ami,platform = get_platform(region)
+    else: platform = ''
     if not keypairname:
         keypairname = f'ec2cli-{name}-KP'
         keyPair = create_key_pair(keypairname)
