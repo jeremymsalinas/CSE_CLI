@@ -144,7 +144,8 @@ def ec2cli():
 @click.option('--region', '-r', default='', help='region')
 @click.option('--userdata', default='', help='path to user data script')
 @click.option('--instancetype',default='t2.medium',help='instance type')
-def create_instance(ami, keypairname, instancesecgroup, name, region, userdata,instancetype):
+@click.option('--count','-c',default=1,help='number of instances')
+def create_instance(ami, keypairname, instancesecgroup, name, region, userdata,instancetype,count):
     randAdj = ['unique','glowing','beautiful','magnificient','ornery','pleasant','grouchy']
     randNoun = ['pheasant','parrot','cockatoo','curassow','chicken','penguin','pidgeon']
     if not name: name = f'{random.choice(randAdj)}-{random.choice(randNoun)}-{int(time.time())}'
@@ -190,7 +191,7 @@ def create_instance(ami, keypairname, instancesecgroup, name, region, userdata,i
                 }
             ],
             UserData=userdata,
-            MaxCount=1,MinCount=1)[0]
+            MaxCount=count,MinCount=1)[0]
     except ClientError as e:
         raise SystemExit(e.response['Error']['Message'])
     click.secho("Waiting for instance to become available...",fg='cyan')
@@ -241,10 +242,17 @@ def get_instances(region):
         tags += [*instance['Instances'][0]['Tags']]
     instanceNames = [[tag['Value']] for tag in tags if tag['Key'] == 'Name']
     for count,name in enumerate(instanceNames):
-        name.extend([ec2cliCreatedInstances[count]['Instances'][0]['PlatformDetails'],
-                     ec2cliCreatedInstances[count]['Instances'][0]['InstanceId'],
-                     ec2cliCreatedInstances[count]['Instances'][0]['State']['Name']])
-    print(tabulate(instanceNames, headers=['Name','Platform','ID','State']))
+        instanceName = ec2cliCreatedInstances[count]['Instances'][0]['PlatformDetails']
+        id = ec2cliCreatedInstances[count]['Instances'][0]['InstanceId']
+        status = ec2cliCreatedInstances[count]['Instances'][0]['State']['Name']
+        if status == 'running':
+            ip = ec2cliCreatedInstances[count]['Instances'][0]['PublicIpAddress']
+        else:
+            ip = ''
+        keyName = ec2cliCreatedInstances[count]['Instances'][0]['KeyName']
+        name.extend([instanceName,id,status,ip,keyName])
+        
+    print(tabulate(instanceNames, headers=['Name','Platform','ID','Status','IP','KeyName']))
 
 # delete instance
 @ec2cli.command('delete_instance')
