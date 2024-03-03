@@ -227,6 +227,7 @@ def get_instances(region):
         except ClientError as e:
             raise SystemExit(e)
     tags = []
+    platform,id,status,ip,keyName = '','','','',''
     try:
         ec2cliCreatedInstances = [instance for instance in userInstance.describe_instances(Filters=[
             {
@@ -239,20 +240,22 @@ def get_instances(region):
     except ClientError as e:
         raise SystemExit(e.response['Error']['Message'])
     for instance in ec2cliCreatedInstances:
-        tags += [*instance['Instances'][0]['Tags']]
+        for ec2 in instance['Instances']:
+            tags += [*ec2['Tags']]
     instanceNames = [[tag['Value']] for tag in tags if tag['Key'] == 'Name']
-    for count,name in enumerate(instanceNames):
-        instanceName = ec2cliCreatedInstances[count]['Instances'][0]['PlatformDetails']
-        id = ec2cliCreatedInstances[count]['Instances'][0]['InstanceId']
-        status = ec2cliCreatedInstances[count]['Instances'][0]['State']['Name']
-        if status == 'running':
-            ip = ec2cliCreatedInstances[count]['Instances'][0]['PublicIpAddress']
-        else:
-            ip = ''
-        keyName = ec2cliCreatedInstances[count]['Instances'][0]['KeyName']
-        name.extend([instanceName,id,status,ip,keyName])
-        
-    print(tabulate(instanceNames, headers=['Name','Platform','ID','Status','IP','KeyName']))
+    ec2List = []
+    for instance in ec2cliCreatedInstances:
+        for count,ec2 in enumerate(instance['Instances']):
+            platform = ec2['PlatformDetails']
+            id = ec2['InstanceId']
+            status = ec2['State']['Name']
+            if status == 'running':
+                ip = ec2['PublicIpAddress']
+            else:
+                ip = ''
+            keyName = ec2['KeyName']
+            ec2List+=[[*instanceNames[count],platform,id,status,ip,keyName]]
+    print(tabulate(ec2List, headers=['Name','Platform','ID','Status','IP','KeyName']))
 
 # delete instance
 @ec2cli.command('delete_instance')
