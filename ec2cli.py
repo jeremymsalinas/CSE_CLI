@@ -167,7 +167,7 @@ def create_instance(ami, keypairname, instancesecgroup, name, region, userdata,i
     if userdata:
         with open(userdata, 'r') as f:
             userdata = f.read()
-    click.secho(f'Creating {name}',fg='cyan')
+    click.secho(f'Creating {name} Count: {count}',fg='cyan')
     try:
         instance = ec2.create_instances(
             ImageId=ami,
@@ -239,13 +239,11 @@ def get_instances(region):
         ])['Reservations']]
     except ClientError as e:
         raise SystemExit(e.response['Error']['Message'])
-    for instance in ec2cliCreatedInstances:
-        for ec2 in instance['Instances']:
-            tags += [*ec2['Tags']]
-    instanceNames = [[tag['Value']] for tag in tags if tag['Key'] == 'Name']
     ec2List = []
     for instance in ec2cliCreatedInstances:
-        for count,ec2 in enumerate(instance['Instances']):
+        for ec2 in instance['Instances']:
+            tags = [*ec2['Tags']]
+            instanceName = [tag['Value'] for tag in tags if tag['Key'] == 'Name']
             platform = ec2['PlatformDetails']
             id = ec2['InstanceId']
             status = ec2['State']['Name']
@@ -254,31 +252,32 @@ def get_instances(region):
             else:
                 ip = ''
             keyName = ec2['KeyName']
-            ec2List+=[[*instanceNames[count],platform,id,status,ip,keyName]]
+            ec2List+=[[*instanceName,platform,id,status,ip,keyName]]
     print(tabulate(ec2List, headers=['Name','Platform','ID','Status','IP','KeyName']))
 
 # delete instance
-@ec2cli.command('delete_instance')
-@click.option('--instanceid', '-id', default='', help='instance id')
+@ec2cli.command('delete_instances')
+@click.argument('instanceids', nargs=-1)
 @click.option('--region', '-r', default='', help='region')
-def delete_instance(instanceid,region):
+def delete_instances(instanceids,region):
     if region:
         try:
             update_session(region)
         except ClientError:
             raise SystemExit("Invalid region id.")
-    if instanceid:
-        instance = ec2.Instance(instanceid)
-        try:
-            tags = instance.tags
-        except ClientError:
-            raise SystemExit(f"Instance {instanceid} not found in region {session.region_name}.")
-        for value in tags:
-            if value['Key'] == 'Name':
-                name = value['Value']
-        instanceSecGroup = instance.security_groups[0]['GroupId']
-    click.secho(f'Deleting {name}...',fg='red')
-    instance.terminate()
-    instance.wait_until_terminated()
-    click.secho(f'{name} deleted',fg='green')
-    click.secho(delete_sec_group(instanceSecGroup))    
+    if instanceids:
+        for id in instanceids:
+            instance = ec2.Instance(id)
+            try:
+                tags = instance.tags
+            except ClientError:
+                raise SystemExit(f"Instance {id} not found in region {session.region_name}.")
+            for value in tags:
+                if value['Key'] == 'Name':
+                    name = value['Value']
+            instanceSecGroup = instance.security_groups[0]['GroupId']
+            click.secho(f'Deleting {name}...',fg='red')
+            instance.terminate()
+            instance.wait_until_terminated()
+            click.secho(f'{name} deleted',fg='green')
+        click.secho(delete_sec_group(instanceSecGroup))
