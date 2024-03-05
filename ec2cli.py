@@ -227,7 +227,7 @@ def create_instance(ami, keypairname, instancesecgroup, name, region, userdata,i
         print(f"Name: {name}\nID: {instance.id}\nDNS: {instanceInfo['PublicDnsName']}\nPublic IP: {instanceInfo['PublicIpAddress']}\nKeyName: {instanceInfo['KeyName']}\n")
         print(f"To connect run the following commands:\nchmod 400 {keyPair}\nssh -i {keyPair} {user}@{instanceInfo['PublicIpAddress']}\n")
     click.secho("To delete the instance run the following command:",fg='yellow')
-    print(f"ec2cli delete_instance -id {instance.id} -r {region}\n")
+    print(f"ec2cli delete_instances {instance.id} -r {region}\n")
     return instance
 
 @ec2cli.command('get_instances')
@@ -291,5 +291,5 @@ def delete_instances(instanceids,region):
             click.secho(f'Deleting {name}...',fg='red')
             instance.terminate()
             instance.wait_until_terminated()
-            click.secho(f'{name} deleted',fg='green')
+            click.secho(f'{name} deleted')
         click.secho(delete_sec_group(instanceSecGroup))
