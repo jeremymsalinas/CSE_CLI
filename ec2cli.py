@@ -145,7 +145,8 @@ def ec2cli():
 @click.option('--userdata', default='', help='path to user data script')
 @click.option('--instancetype',default='t2.medium',help='instance type')
 @click.option('--count','-c',default=1,help='number of instances')
-def create_instance(ami, keypairname, instancesecgroup, name, region, userdata,instancetype,count):
+@click.option('--volumesize', '-v', default=50, help='volume size')
+def create_instance(ami, keypairname, instancesecgroup, name, region, userdata,instancetype,count,volumesize):
     randAdj = ['unique','glowing','beautiful','magnificient','ornery','pleasant','grouchy']
     randNoun = ['pheasant','parrot','cockatoo','curassow','chicken','penguin','pidgeon']
     if not name: name = f'{random.choice(randAdj)}-{random.choice(randNoun)}-{int(time.time())}'
@@ -167,9 +168,20 @@ def create_instance(ami, keypairname, instancesecgroup, name, region, userdata,i
     if userdata:
         with open(userdata, 'r') as f:
             userdata = f.read()
+    deviceName = list(ec2.images.filter(ImageIds=[ami]))[0].root_device_name
     click.secho(f'Creating {name} Count: {count}',fg='cyan')
     try:
         instance = ec2.create_instances(
+            BlockDeviceMappings = [
+                {
+                    'DeviceName': deviceName,
+                    'Ebs': {
+                        'DeleteOnTermination': True,
+                        'VolumeSize': volumesize,
+                        'VolumeType': 'gp3'
+                    },
+                }
+            ],
             ImageId=ami,
             InstanceType=instancetype,
             KeyName=keypairname,
