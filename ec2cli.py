@@ -216,7 +216,7 @@ def create_instance(ami, keypairname, instancesecgroup, name, region, userdata,i
         while not windowsPass:
             click.secho("Waiting for password to be generated...",fg='cyan')
             windowsPass = userInstance.get_password_data(InstanceId=instance.id)['PasswordData']
-            time.sleep(30)
+            time.sleep(15)
         with open (keyPair,'r') as f:
             key_text = f.read()
         windowsDecryptedPass = decrypt(key_text,windowsPass)
@@ -292,4 +292,32 @@ def delete_instances(instanceids,region):
             instance.terminate()
             instance.wait_until_terminated()
             click.secho(f'{name} deleted')
-        click.secho(delete_sec_group(instanceSecGroup))
+            click.secho(delete_sec_group(instanceSecGroup))
+
+@ec2cli.command('start_instance')
+@click.argument('instanceids', nargs=-1)
+@click.option('--region', '-r', default='', help='region')
+def start_instance(instanceids, region):
+    dir = os.path.expanduser(f'~/ec2cli')
+    if region:
+        try:
+            update_session(region)
+        except ClientError:
+            raise SystemExit("Invalid region id.")
+    for instanceid in instanceids:
+        instance = ec2.Instance(instanceid)
+        instance.start()
+        instance.wait_until_running()
+        click.secho(f'Instance {instanceid} started')
+        try:
+            keyPair = f'{dir}/{instance.key_name}.pem'
+            with open(keyPair, 'r') as f:
+                key_text = f.read()
+        except FileNotFoundError:
+            keyPair = ""
+        if instance.platform == 'windows' and keyPair:
+            password = instance.password_data
+            decryptedPass = decrypt(key_text, password)
+            click.secho(f'PublicIP: {instance.public_ip_address}\nPassword: {decryptedPass}')
+        else:
+            click.secho(f'To connect run the following commands:\nssh -i {keyPair} ec2-user@{instance.public_ip_address}')
