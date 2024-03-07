@@ -81,6 +81,7 @@ def delete_sec_group(secGroupId):
 
 # add security group rules
 def add_sec_rules(platform,instanceSecGroup):
+    cidr = userInstance.describe_vpcs(Filters=[{'Name': 'is-default', 'Values': ['true']}])['Vpcs'][0]['CidrBlock']
     try:
         publicIp = requests.get('https://api.ipify.org?format=json').json()['ip']
     except requests.exceptions.RequestException as e:
@@ -108,7 +109,15 @@ def add_sec_rules(platform,instanceSecGroup):
             )
         except ClientError as e:
             raise SystemExit(e)
-
+    try:
+        userInstance.authorize_security_group_ingress(
+            GroupId=instanceSecGroup,
+            CidrIp=cidr,
+            IpProtocol='-1'
+        )
+    except ClientError as e:
+        print(f'{e.response["Error"]["Message"]}')
+        exit()
 
 # decrypt instance password
 def decrypt(key_text, password_data):
