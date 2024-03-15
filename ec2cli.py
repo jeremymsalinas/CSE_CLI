@@ -43,12 +43,11 @@ def get_platform(region):
 
 # check for duplicate group name
 def check_sec_group(groupName):
-    # userInstance.describe_vpcs(Filters=[{'Name': 'is-default','Values': ['true']}])['Vpcs'][0]['VpcId']
     try:
-        secGroups = userInstance.describe_security_groups()['SecurityGroups']
+        secGroups = ec2.security_groups.all()
     except ClientError as e:
         raise ValueError(e)
-    secGroupNames = [group['GroupName'] for group in secGroups]
+    secGroupNames = [group.group_name for group in secGroups]
     secGroupExists = groupName in secGroupNames
     return secGroupExists
 
@@ -59,22 +58,20 @@ def create_sec_group(name):
     validName = check_sec_group(secGroupName)
     if not validName:
         try:
-            instanceSecGroup = userInstance.create_security_group(
-            Description='Created from ec2 cli',
-            GroupName=secGroupName
-        )['GroupId']
+            instanceSecGroup = ec2.create_security_group(
+                Description='Created from ec2 cli',
+                GroupName=secGroupName
+            ).id
         except ClientError as e:
             return e.response['Error']['Message']
         return instanceSecGroup
     print("You've entered an existing security group name.")
-    exit
+    exit()
 
 # delete security group
 def delete_sec_group(secGroupId):
     try:
-        userInstance.delete_security_group(
-            GroupId=secGroupId
-        )
+        ec2.SecurityGroup(secGroupId).delete()
         return f'{secGroupId} deleted'
     except ClientError:
         return f'Unable to delete {secGroupId}'
