@@ -22,7 +22,7 @@ def get_platform(region):
     quickStartAmis = requests.get(f"https://prod.{region}.qs.console.ec2.aws.dev/get_quickstart_list_en.json").json()['amiList']
     additionalAmis = [['{title}'.format(**key),'{imageId64}'.format(**key)] 
                       for key in quickStartAmis if '{platform}'.format(**key) != 'amazon' 
-                      and '{platform}'.format(**key) != 'windows' and '{platform}'.format(**key) != 'x86_64_mac']
+                      and '{platform}'.format(**key) != 'windows' and '{platform}'.format(**key) != 'x86_64_mac' and 'imageId64' in key.keys()]
     os = ''
     amzn2 = '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
     availablePlatforms = ['Windows Server 2016','Windows Server 2019','Windows Server 2022','Amazon Linux']
