@@ -322,8 +322,33 @@ def start_instance(instanceids, region):
         except FileNotFoundError:
             keyPair = ""
         if instance.platform == 'windows' and keyPair:
-            password = instance.password_data
+            password = instance.password_data()['PasswordData']
             decryptedPass = decrypt(key_text, password)
             click.secho(f'PublicIP: {instance.public_ip_address}\nPassword: {decryptedPass}')
+        else:
+            click.secho(f'To connect run the following commands:\nssh -i {keyPair} ec2-user@{instance.public_ip_address}')
+
+@ec2cli.command('get_password')
+@click.argument('instanceids', nargs=-1)
+@click.option('--region', '-r', default='', help='region')
+def get_password(instanceids, region):
+    dir = os.path.expanduser(f'~/ec2cli')
+    if region:
+        try:
+            update_session(region)
+        except ClientError:
+            raise SystemExit("Invalid region id.")
+    for instanceid in instanceids:
+        instance = ec2.Instance(instanceid)
+        try:
+            keyPair = f'{dir}/{instance.key_name}.pem'
+            with open(keyPair, 'r') as f:
+                key_text = f.read()
+        except FileNotFoundError:
+            keyPair = ""
+        if instance.platform == 'windows' and keyPair:
+            password = instance.password_data()['PasswordData']
+            decryptedPass = decrypt(key_text, password)
+            click.secho(f'{instanceid}\nPublicIP: {instance.public_ip_address}\nPassword: {decryptedPass}\n')
         else:
             click.secho(f'To connect run the following commands:\nssh -i {keyPair} ec2-user@{instance.public_ip_address}')
