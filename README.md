@@ -35,12 +35,14 @@ More information on boto3 credentials [here](https://boto3.amazonaws.com/v1/docu
   Usage: ec2cli [OPTIONS] COMMAND [ARGS]...
 
   Options:
-  --help  Show this message and exit.
+    --help  Show this message and exit.
 
   Commands:
     create_instance
-    delete_instance
+    delete_instances
     get_instances
+    get_password
+    start_instance
   ```
 - By default create_instance will create an instance in your default region based on your profile settings in the region's default VPC and create an instance name, security group, keypair, and inbound rules from your public IP (RDP for Windows and SSH otherwise).
 ```
