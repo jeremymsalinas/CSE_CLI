@@ -351,11 +351,14 @@ def start_all(region):
             update_session(region)
         except ClientError:
             raise SystemExit("Invalid region id.")
-    instance_iterator = ec2.instances.filter(Filters=[{'Name':'tag:ec2cli','Values':['true']}])
-    instance_iterator.start()
-    click.secho(f'Starting {len(list(instance_iterator))} instances...\n')
-    time.sleep(3)
-    get_instances(region)
+    try:
+        instance_iterator = ec2.instances.filter(Filters=[{'Name':'tag:ec2cli','Values':['true']}])
+        instance_iterator.start()
+        click.secho(f'Starting {len(list(instance_iterator))} instances...\n')
+        time.sleep(10)
+        get_instances(region)
+    except ClientError as e:
+        raise SystemExit(f"{e.response['Error']['Message']}")
 
 @ec2cli.command('stop_all')
 @click.option('--region', '-r', default='', help='region')
@@ -365,11 +368,14 @@ def stop_all(region):
             update_session(region)
         except ClientError:
             raise SystemExit("Invalid region id.")
-    instance_iterator = ec2.instances.filter(Filters=[{'Name':'tag:ec2cli','Values':['true']}])
-    instance_iterator.stop()
-    click.secho(f'Stopping {len(list(instance_iterator))} instances...\n')
-    time.sleep(3)
-    get_instances(region)
+    try:
+        instance_iterator = ec2.instances.filter(Filters=[{'Name':'tag:ec2cli','Values':['true']}])
+        instance_iterator.stop()
+        click.secho(f'Stopping {len(list(instance_iterator))} instances...\n')
+        time.sleep(10)
+        get_instances(region)
+    except ClientError as e:
+        raise SystemExit(f"{e.response['Error']['Message']}")
 
 @ec2cli.command('get_password')
 @click.argument('instanceids', nargs=-1)
