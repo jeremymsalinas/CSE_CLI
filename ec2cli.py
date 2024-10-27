@@ -328,6 +328,49 @@ def start_instance(instanceids, region):
         else:
             click.secho(f'To connect run the following commands:\nssh -i {keyPair} ec2-user@{instance.public_ip_address}')
 
+@ec2cli.command('stop_instance')
+@click.argument('instanceids', nargs=-1)
+@click.option('--region', '-r', default='', help='region')
+def stop_instance(instanceids, region):
+    if region:
+        try:
+            update_session(region)
+        except ClientError:
+            raise SystemExit("Invalid region id.")
+    for instanceid in instanceids:
+        instance = ec2.Instance(instanceid)
+        instance.stop()
+        instance.wait_until_stopped()
+        click.secho(f'Instance {instanceid} stopped')
+
+@ec2cli.command('start_all')
+@click.option('--region', '-r', default='', help='region')
+def start_all(region):
+    if region:
+        try:
+            update_session(region)
+        except ClientError:
+            raise SystemExit("Invalid region id.")
+    instance_iterator = ec2.instances.filter(Filters=[{'Name':'tag:ec2cli','Values':['true']}])
+    instance_iterator.start()
+    click.secho(f'Starting {len(list(instance_iterator))} instances...\n')
+    time.sleep(3)
+    get_instances(region)
+
+@ec2cli.command('stop_all')
+@click.option('--region', '-r', default='', help='region')
+def stop_all(region):
+    if region:
+        try:
+            update_session(region)
+        except ClientError:
+            raise SystemExit("Invalid region id.")
+    instance_iterator = ec2.instances.filter(Filters=[{'Name':'tag:ec2cli','Values':['true']}])
+    instance_iterator.stop()
+    click.secho(f'Stopping {len(list(instance_iterator))} instances...\n')
+    time.sleep(3)
+    get_instances(region)
+
 @ec2cli.command('get_password')
 @click.argument('instanceids', nargs=-1)
 @click.option('--region', '-r', default='', help='region')
