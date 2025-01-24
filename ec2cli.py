@@ -4,6 +4,9 @@ from tabulate import tabulate
 from botocore.exceptions import ClientError
 from Crypto.Cipher import PKCS1_v1_5
 from Crypto.PublicKey import RSA
+from auto_click_auto import enable_click_shell_completion
+from auto_click_auto.constants import ShellType
+
 
 access_key = os.getenv('AWS_ACCESS_KEY_ID')
 secret_key = os.getenv('AWS_SECRET_ACCESS_KEY')
@@ -141,6 +144,17 @@ def create_key_pair(keyPairName):
 def ec2cli():
     pass
 
+# Add autocomplete
+@click.command()
+def shell_completion():
+    """Activate shell completion for this program."""
+    enable_click_shell_completion(
+        program_name="ec2cli",
+        shells={ShellType.BASH, ShellType.FISH, ShellType.ZSH},
+        verbose=True,
+    )
+
+
 #  create instance returns instance object
 @ec2cli.command('create_instance')
 @click.option('--ami', default='', help='ami id')
@@ -236,6 +250,7 @@ def create_instance(ami, keypairname, instancesecgroup, name, region, userdata,i
     print(f"ec2cli delete_instances {instance.id} -r {region}\n")
     return instance
 
+
 @ec2cli.command('get_instances')
 @click.option('--region', default='', help='region')
 def get_instances(region):
@@ -273,9 +288,17 @@ def get_instances(region):
             ec2List+=[[*instanceName,platform,id,status,ip,keyName]]
     print(tabulate(ec2List, headers=['Name','Platform','ID','Status','IP','KeyName']))
 
-# delete instance
+
+# list instance ids for deletion
+def get_instance_ids():
+    instances = ec2.instances.filter(Filters=[{'Name':'tag:ec2cli','Values':['true']}])
+    instance_ids = [instance.id for instance in instances]
+    return instance_ids
+
+
+# delete instances
 @ec2cli.command('delete_instances')
-@click.argument('instanceids', nargs=-1)
+@click.argument('instanceids', type=click.Choice(get_instance_ids()),nargs=-1)
 @click.option('--region', '-r', default='', help='region')
 def delete_instances(instanceids,region):
     if region:
@@ -299,6 +322,7 @@ def delete_instances(instanceids,region):
             instance.wait_until_terminated()
             click.secho(f'{name} deleted')
             click.secho(delete_sec_group(instanceSecGroup))
+
 
 @ec2cli.command('start_instance')
 @click.argument('instanceids', nargs=-1)
@@ -328,6 +352,7 @@ def start_instance(instanceids, region):
         else:
             click.secho(f'To connect run the following commands:\nssh -i {keyPair} ec2-user@{instance.public_ip_address}')
 
+
 @ec2cli.command('stop_instance')
 @click.argument('instanceids', nargs=-1)
 @click.option('--region', '-r', default='', help='region')
@@ -342,6 +367,7 @@ def stop_instance(instanceids, region):
         instance.stop()
         instance.wait_until_stopped()
         click.secho(f'Instance {instanceid} stopped')
+
 
 @ec2cli.command('start_all')
 @click.option('--region', '-r', default='', help='region')
@@ -360,6 +386,7 @@ def start_all(region):
     except ClientError as e:
         raise SystemExit(f"{e.response['Error']['Message']}")
 
+
 @ec2cli.command('stop_all')
 @click.option('--region', '-r', default='', help='region')
 def stop_all(region):
@@ -376,6 +403,7 @@ def stop_all(region):
         get_instances(region)
     except ClientError as e:
         raise SystemExit(f"{e.response['Error']['Message']}")
+
 
 @ec2cli.command('get_password')
 @click.argument('instanceids', nargs=-1)

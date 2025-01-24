@@ -10,7 +10,8 @@ setup(
         'tabulate',
         'requests',
         'pycryptodome',
-        'pick'
+        'pick',
+        'auto-click-auto'
 
     ],
     entry_points={
