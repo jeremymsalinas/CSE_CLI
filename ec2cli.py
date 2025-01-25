@@ -289,14 +289,14 @@ def get_instances(region):
     print(tabulate(ec2List, headers=['Name','Platform','ID','Status','IP','KeyName']))
 
 
-# list instance ids for deletion
+# use ec2 resource to filter ec2cli created instances
 def get_instance_ids():
     instances = ec2.instances.filter(Filters=[{'Name':'tag:ec2cli','Values':['true']}])
     instance_ids = [instance.id for instance in instances]
     return instance_ids
 
 
-# delete instances
+# use ec2 resource to filter ec2cli created instances
 @ec2cli.command('delete_instances')
 @click.argument('instanceids', type=click.Choice(get_instance_ids()),nargs=-1)
 @click.option('--region', '-r', default='', help='region')
@@ -325,7 +325,7 @@ def delete_instances(instanceids,region):
 
 
 @ec2cli.command('start_instance')
-@click.argument('instanceids', nargs=-1)
+@click.argument('instanceids', type=click.Choice(get_instance_ids()), nargs=-1)
 @click.option('--region', '-r', default='', help='region')
 def start_instance(instanceids, region):
     dir = os.path.expanduser(f'~/ec2cli')
@@ -354,7 +354,7 @@ def start_instance(instanceids, region):
 
 
 @ec2cli.command('stop_instance')
-@click.argument('instanceids', nargs=-1)
+@click.argument('instanceids', type=click.Choice(get_instance_ids()), nargs=-1)
 @click.option('--region', '-r', default='', help='region')
 def stop_instance(instanceids, region):
     if region:
@@ -406,7 +406,7 @@ def stop_all(region):
 
 
 @ec2cli.command('get_password')
-@click.argument('instanceids', nargs=-1)
+@click.argument('instanceids',type=click.Choice(get_instance_ids()),nargs=-1)
 @click.option('--region', '-r', default='', help='region')
 def get_password(instanceids, region):
     dir = os.path.expanduser(f'~/ec2cli')
