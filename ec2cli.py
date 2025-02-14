@@ -162,7 +162,7 @@ def shell_completion():
 @click.option('--instancesecgroup', default='', help='security group id')
 @click.option('--name', '-n', default='', help='instance name')
 @click.option('--region', '-r', default='', help='region')
-@click.option('--userdata', default='', type=click.Choice([f for f in os.listdir() if os.path.isfile(f)]),help='path to user data script')
+@click.option('--userdata', default='', type=click.Choice([f for f in os.listdir() if os.path.isfile(f)] + ['']),help='path to user data script')
 @click.option('--instancetype',default='t2.medium',help='instance type')
 @click.option('--count','-c',default=1,help='number of instances')
 @click.option('--volumesize', '-v', default=50, help='volume size')
