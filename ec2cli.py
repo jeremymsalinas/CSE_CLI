@@ -240,7 +240,6 @@ def create_instance(ami, keypairname, instancesecgroup, name, region, userdata,i
         raise SystemExit(e.response['Error']['Message'])
     
     ids = []
-    print("Waiting for instance to start")
     status = instances.state['Name']
     while status != 'running':
         animate_waiting(10)
@@ -252,7 +251,7 @@ def create_instance(ami, keypairname, instancesecgroup, name, region, userdata,i
         
         
         ids.append(instance.id)
-        click.secho("Instance created!\n",fg='cyan')
+        click.secho("\n\tInstance created!\n",fg='cyan')
         instanceInfo = userInstance.describe_instances(InstanceIds=[instance.id])['Reservations'][0]['Instances'][0]
         windowsPass = ''
         
@@ -264,12 +263,12 @@ def create_instance(ami, keypairname, instancesecgroup, name, region, userdata,i
             with open (keyPair,'r') as f:
                 key_text = f.read()
             windowsDecryptedPass = decrypt(key_text,windowsPass)
-            print("\rDone! 🍻\n")
+            print("\r\tDone! 🍻                               \n")
             click.echo(f"\t{click.style('Name:',fg='green')} {name}")
             click.echo(f"\t{click.style('ID:',fg='green')} {instance.id}")
             click.echo(f"\t{click.style('Public DNS:',fg='green')} {instanceInfo['PublicDnsName']}")
             click.echo(f"\t{click.style('Public IP:',fg='green')} {instanceInfo['PublicIpAddress']}")
-            click.echo(f"\t{click.style('RDP Password:')} {windowsDecryptedPass}\n")
+            click.echo(f"\t{click.style('RDP Password:',fg='green')} {windowsDecryptedPass}\n")
             
         
         else:
