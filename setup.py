@@ -1,10 +1,13 @@
+import fastentrypoints
 from setuptools import setup
+
 
 setup(
     name='ec2cli',
     version='0.1.0',
     py_modules=['ec2cli'],
     install_requires=[
+        'fastentrypoints',
         'Click',
         'boto3',
         'tabulate',
