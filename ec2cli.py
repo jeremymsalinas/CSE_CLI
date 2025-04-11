@@ -1,4 +1,4 @@
-import boto3, requests, base64, time, random, os, click
+import boto3, requests, base64, time, random, os, click, sys
 from pick import pick
 from tabulate import tabulate
 from botocore.exceptions import ClientError
@@ -238,30 +238,70 @@ def create_instance(ami, keypairname, instancesecgroup, name, region, userdata,i
             MaxCount=count,MinCount=1)[0]
     except ClientError as e:
         raise SystemExit(e.response['Error']['Message'])
-    click.secho("Waiting for instance to become available...",fg='cyan')
+    
+    ids = []
+    print("Waiting for instance to start")
+    status = instances.state['Name']
+    while status != 'running':
+        animate_waiting(10)
+        instances.reload()
+        status = instances.state['Name']
+        
+
     for instance in ec2.instances.filter(Filters=[{'Name':'tag:Name','Values':[name]}]):
-        instance.wait_until_running()
-        click.secho("Instance online!",fg='cyan')
+        
+        
+        ids.append(instance.id)
+        click.secho("Instance created!\n",fg='cyan')
         instanceInfo = userInstance.describe_instances(InstanceIds=[instance.id])['Reservations'][0]['Instances'][0]
         windowsPass = ''
+        
         if 'Windows' in platform:
             # wait for password to be generated
             while not windowsPass:
-                click.secho("Waiting for password to be generated...",fg='cyan')
                 windowsPass = userInstance.get_password_data(InstanceId=instance.id)['PasswordData']
-                time.sleep(10)
+                animate_waiting(10,"Waiting for password to be generated...")
             with open (keyPair,'r') as f:
                 key_text = f.read()
             windowsDecryptedPass = decrypt(key_text,windowsPass)
-            print(f"Name: {name}\nID: {instance.id}\nDNS: {instanceInfo['PublicDnsName']}\nPublic IP: {instanceInfo['PublicIpAddress']}\nKeyName: {instanceInfo['KeyName']}\nRDP Password: {windowsDecryptedPass}\n")
+            print("\rDone! 🍻\n")
+            click.echo(f"\t{click.style('Name:',fg='green')} {name}")
+            click.echo(f"\t{click.style('ID:',fg='green')} {instance.id}")
+            click.echo(f"\t{click.style('Public DNS:',fg='green')} {instanceInfo['PublicDnsName']}")
+            click.echo(f"\t{click.style('Public IP:',fg='green')} {instanceInfo['PublicIpAddress']}")
+            click.echo(f"\t{click.style('RDP Password:')} {windowsDecryptedPass}\n")
+            
+        
         else:
             if 'Ubuntu' in platform: user = 'ubuntu'
+            
             else: user = 'ec2-user'
-            print(f"Name: {name}\nID: {instance.id}\nDNS: {instanceInfo['PublicDnsName']}\nPublic IP: {instanceInfo['PublicIpAddress']}\nKeyName: {instanceInfo['KeyName']}\n")
-            print(f"To connect run the following commands:\nchmod 400 {keyPair}\nssh -i {keyPair} {user}@{instanceInfo['PublicIpAddress']}\n")
+
+            click.echo(f"\t{click.style("Name:",fg='green')} {name}")
+            click.echo(f"\t{click.style("ID:",fg='green')} {instance.id}")
+            click.echo(f"\t{click.style('Public DNS:',fg='green')} {instanceInfo['PublicDnsName']}")
+            click.echo(f"\t{click.style('Public IP:',fg='green')} {instanceInfo['PublicIpAddress']}\n")
+            
+            print(f"To connect run the following commands:\n chmod 400 {keyPair}\nssh -i {keyPair} {user}@{instanceInfo['PublicIpAddress']}\n")
+        
         click.secho("To delete the instance run the following command:",fg='yellow')
         print(f"ec2cli delete_instances {instance.id} -r {region}\n")
+
+    if len(ids) > 1:    
+        click.secho("To delete all instances run the following command:",fg='yellow')
+        print(f"ec2cli delete_instances {" ".join(ids)} -r {region}\n")
+    
     return instances
+
+def animate_waiting(duration, message="Waiting for instance to start..."):
+    frames = ["🙂", "🙃", "🙂", "🙃", "😗", "🙄", "😑", "😡", "😤", "🫠"]
+    i = 0
+    j = 0
+    while i < duration:
+        click.secho(f"\r\t{message} {frames[j % len(frames)]}\r",nl=False)
+        i += 1
+        j += 1
+        time.sleep(1)
 
 
 @ec2cli.command('get_instances')
@@ -320,23 +360,43 @@ def delete_instances(instanceids,region):
             update_session(region)
         except ClientError:
             raise SystemExit("Invalid region id.")
+    
     if instanceids:
         for id in instanceids:
             instance = ec2.Instance(id)
-            try:
-                tags = instance.tags
-            except ClientError:
-                raise SystemExit(f"Instance {id} not found in region {session.region_name}.")
-            for value in tags:
-                if value['Key'] == 'Name':
-                    name = value['Value']
-            instanceSecGroup = instance.security_groups[0]['GroupId']
+            name = get_instance_name(instance)
             click.secho(f'Deleting {name}...',fg='red')
             instance.terminate()
+        
+        for id in instanceids:
+            instance = ec2.Instance(id)
+            name = get_instance_name(instance)
+            instanceSecGroup = get_instance_sec_group(instance)
             instance.wait_until_terminated()
-            click.secho(f'{name} deleted')
-            click.secho(delete_sec_group(instanceSecGroup))
+            click.secho(f'{name} deleted!',fg='green')
+            
+            if instanceSecGroup:
+                click.secho(delete_sec_group(instanceSecGroup))
 
+def get_instance_sec_group(instance):
+    try:
+        secGroups = instance.security_groups
+        if len(secGroups) < 1:
+            return ""
+        else:
+            return secGroups[0]['GroupId']
+    except ClientError:
+        raise SystemExit()
+
+def get_instance_name(instance):
+    try:
+        tags = instance.tags
+    except ClientError:
+            raise SystemExit(f"Instance {id} not found in region {session.region_name}.")
+    for value in tags:
+        if value['Key'] == 'Name':
+                name = value['Value']
+    return name
 
 @ec2cli.command('start_instance')
 @click.argument('instanceids', type=click.Choice(get_instance_ids()), nargs=-1)
