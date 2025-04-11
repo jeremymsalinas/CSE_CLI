@@ -10,14 +10,27 @@ from auto_click_auto.constants import ShellType
 
 access_key = os.getenv('AWS_ACCESS_KEY_ID')
 secret_key = os.getenv('AWS_SECRET_ACCESS_KEY')
-session = boto3.session.Session(aws_access_key_id=access_key,aws_secret_access_key=secret_key)
-ec2 = session.resource('ec2')
-userInstance = session.client('ec2')
+
+try:
+    session = boto3.session.Session(aws_access_key_id=access_key,aws_secret_access_key=secret_key)
+    ec2 = session.resource('ec2')
+    userInstance = session.client('ec2')
+except ClientError as e:
+    raise e.response['Error']['Message']
+    
+
 
 def update_session(region):
     global ec2, userInstance
-    ec2 = session.resource('ec2',region_name=region)
-    userInstance = session.client('ec2',region_name=region)
+    try: 
+        ec2 = session.resource('ec2',region_name=region)
+    except ClientError as e:
+        raise e.response['Error']['Message']
+    
+    try:
+        userInstance = session.client('ec2',region_name=region)
+    except ClientError as e:
+        raise e.response['Error']['Message']
 
 # user platform selection screen
 def get_platform(region):
@@ -96,8 +109,7 @@ def add_sec_rules(platform,instanceSecGroup):
                 ToPort=3389
             )
         except ClientError as e:
-            print(f'{e.response["Error"]["Message"]}')
-            exit()
+            raise SystemExit(e)
     else:
         try:
             userInstance.authorize_security_group_ingress(
@@ -116,8 +128,8 @@ def add_sec_rules(platform,instanceSecGroup):
             IpProtocol='-1'
         )
     except ClientError as e:
-        print(f'{e.response["Error"]["Message"]}')
-        exit()
+        raise SystemExit(e)
+
 
 # decrypt instance password
 def decrypt(key_text, password_data):
@@ -191,7 +203,7 @@ def create_instance(ami, keypairname, instancesecgroup, name, region, userdata,i
     deviceName = list(ec2.images.filter(ImageIds=[ami]))[0].root_device_name
     click.secho(f'Creating {name} Count: {count}',fg='cyan')
     try:
-        instance = ec2.create_instances(
+        instances = ec2.create_instances(
             BlockDeviceMappings = [
                 {
                     'DeviceName': deviceName,
@@ -227,28 +239,29 @@ def create_instance(ami, keypairname, instancesecgroup, name, region, userdata,i
     except ClientError as e:
         raise SystemExit(e.response['Error']['Message'])
     click.secho("Waiting for instance to become available...",fg='cyan')
-    instance.wait_until_running()
-    click.secho("Instance online!",fg='cyan')
-    instanceInfo = userInstance.describe_instances(InstanceIds=[instance.id])['Reservations'][0]['Instances'][0]
-    windowsPass = ''
-    if 'Windows' in platform:
-        # wait for password to be generated
-        while not windowsPass:
-            click.secho("Waiting for password to be generated...",fg='cyan')
-            windowsPass = userInstance.get_password_data(InstanceId=instance.id)['PasswordData']
-            time.sleep(15)
-        with open (keyPair,'r') as f:
-            key_text = f.read()
-        windowsDecryptedPass = decrypt(key_text,windowsPass)
-        print(f"Name: {name}\nID: {instance.id}\nDNS: {instanceInfo['PublicDnsName']}\nPublic IP: {instanceInfo['PublicIpAddress']}\nKeyName: {instanceInfo['KeyName']}\nRDP Password: {windowsDecryptedPass}\n")
-    else:
-        if 'Ubuntu' in platform: user = 'ubuntu'
-        else: user = 'ec2-user'
-        print(f"Name: {name}\nID: {instance.id}\nDNS: {instanceInfo['PublicDnsName']}\nPublic IP: {instanceInfo['PublicIpAddress']}\nKeyName: {instanceInfo['KeyName']}\n")
-        print(f"To connect run the following commands:\nchmod 400 {keyPair}\nssh -i {keyPair} {user}@{instanceInfo['PublicIpAddress']}\n")
-    click.secho("To delete the instance run the following command:",fg='yellow')
-    print(f"ec2cli delete_instances {instance.id} -r {region}\n")
-    return instance
+    for instance in ec2.instances.filter(Filters=[{'Name':'tag:Name','Values':[name]}]):
+        instance.wait_until_running()
+        click.secho("Instance online!",fg='cyan')
+        instanceInfo = userInstance.describe_instances(InstanceIds=[instance.id])['Reservations'][0]['Instances'][0]
+        windowsPass = ''
+        if 'Windows' in platform:
+            # wait for password to be generated
+            while not windowsPass:
+                click.secho("Waiting for password to be generated...",fg='cyan')
+                windowsPass = userInstance.get_password_data(InstanceId=instance.id)['PasswordData']
+                time.sleep(10)
+            with open (keyPair,'r') as f:
+                key_text = f.read()
+            windowsDecryptedPass = decrypt(key_text,windowsPass)
+            print(f"Name: {name}\nID: {instance.id}\nDNS: {instanceInfo['PublicDnsName']}\nPublic IP: {instanceInfo['PublicIpAddress']}\nKeyName: {instanceInfo['KeyName']}\nRDP Password: {windowsDecryptedPass}\n")
+        else:
+            if 'Ubuntu' in platform: user = 'ubuntu'
+            else: user = 'ec2-user'
+            print(f"Name: {name}\nID: {instance.id}\nDNS: {instanceInfo['PublicDnsName']}\nPublic IP: {instanceInfo['PublicIpAddress']}\nKeyName: {instanceInfo['KeyName']}\n")
+            print(f"To connect run the following commands:\nchmod 400 {keyPair}\nssh -i {keyPair} {user}@{instanceInfo['PublicIpAddress']}\n")
+        click.secho("To delete the instance run the following command:",fg='yellow')
+        print(f"ec2cli delete_instances {instance.id} -r {region}\n")
+    return instances
 
 
 @ec2cli.command('get_instances')
