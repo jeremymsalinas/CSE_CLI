@@ -59,3 +59,5 @@ ec2cli create_instance
 ec2cli delete_instance -id INSTANCE_ID -r REGION
 ```
 - This will delete the instance and attempt to delete the attached security group provided it isn't still in use by other resources.
+
+## 🤝 Contributing
